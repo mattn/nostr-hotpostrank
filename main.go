@@ -72,6 +72,7 @@ func main() {
 	ms := nostr.MultiStore{}
 	feedRelays := []string{
 		"wss://yabu.me",
+		"wss://nos.lol",
 	}
 	for _, r := range feedRelays {
 		rr, err := nostr.RelayConnect(ctx, r)

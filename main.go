@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"sort"
@@ -31,6 +32,7 @@ var (
 	relays = []string{
 		"wss://yabu.me",
 	}
+	tt bool
 )
 
 func postRanks(ctx context.Context, ms nostr.MultiStore, nsec string, items []*HotItem) error {
@@ -46,6 +48,11 @@ func postRanks(ctx context.Context, ms nostr.MultiStore, nsec string, items []*H
 			fmt.Fprintf(&buf, " %d reactions", item.ReactionCount)
 		}
 		fmt.Fprintf(&buf, "\n  nostr:%s\n", note)
+	}
+
+	if tt {
+		io.Copy(os.Stdout, &buf)
+		return nil
 	}
 
 	eev := nostr.Event{}
@@ -76,6 +83,7 @@ func postRanks(ctx context.Context, ms nostr.MultiStore, nsec string, items []*H
 func main() {
 	var ver bool
 	flag.BoolVar(&ver, "version", false, "show version")
+	flag.BoolVar(&tt, "t", false, "test")
 	flag.Parse()
 
 	if ver {
@@ -112,26 +120,20 @@ func main() {
 			if e.Key() != "e" {
 				continue
 			}
-			if hi, ok := m[e.Value()]; ok {
-				switch ev.Kind {
-				case nostr.KindRepost:
-					hi.RepostCount++
-				case nostr.KindReaction:
-					hi.ReactionCount++
+			hi, ok := m[e.Value()]
+			if !ok {
+				hi = &HotItem{
+					ID:          e.Value(),
+					RepostCount: 0,
 				}
-			} else {
-				switch ev.Kind {
-				case nostr.KindRepost:
-					m[e.Value()] = &HotItem{
-						ID:          e.Value(),
-						RepostCount: 1,
-					}
-				case nostr.KindReaction:
-					m[e.Value()] = &HotItem{
-						ID:            e.Value(),
-						ReactionCount: 1,
-					}
-				}
+				m[e.Value()] = hi
+			}
+
+			switch ev.Kind {
+			case nostr.KindRepost:
+				hi.RepostCount++
+			case nostr.KindReaction:
+				hi.ReactionCount++
 			}
 		}
 	}

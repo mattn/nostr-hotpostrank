@@ -1,0 +1,6 @@
+secret.yaml
+k8s
+*.sh
+nostr-hotpostrank
+backup
+*.json

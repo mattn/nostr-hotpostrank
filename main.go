@@ -35,7 +35,7 @@ var (
 
 func postRanks(ctx context.Context, ms nostr.MultiStore, nsec string, items []*HotItem) error {
 	var buf bytes.Buffer
-	fmt.Fprintln(&buf, "Nostr Hot Post Ranking #hotpostrank")
+	fmt.Fprintln(&buf, "最近のホットな話題をお知らせします。 #hotpostrank")
 	for i, item := range items {
 		note, _ := nip19.EncodeNote(item.Event.ID)
 		fmt.Fprintf(&buf, "No%d:", i+1)

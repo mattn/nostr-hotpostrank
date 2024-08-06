@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -12,6 +13,12 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 )
+
+const name = "nostr-hotpostrank"
+
+const version = "0.0.0"
+
+var revision = "HEAD"
 
 type HotItem struct {
 	ID            string
@@ -67,13 +74,20 @@ func postRanks(ctx context.Context, ms nostr.MultiStore, nsec string, items []*H
 }
 
 func main() {
-	ctx := context.Background()
+	var ver bool
+	flag.BoolVar(&ver, "version", false, "show version")
+	flag.Parse()
+
+	if ver {
+		fmt.Println(version)
+		os.Exit(0)
+	}
 
 	ms := nostr.MultiStore{}
 	feedRelays := []string{
 		"wss://yabu.me",
-		"wss://nos.lol",
 	}
+	ctx := context.TODO()
 	for _, r := range feedRelays {
 		rr, err := nostr.RelayConnect(ctx, r)
 		if err == nil {
@@ -147,5 +161,6 @@ func main() {
 	}
 	items = items[:n]
 
+	ctx = context.TODO()
 	postRanks(ctx, ms, os.Getenv("BOT_NSEC"), items)
 }

@@ -150,7 +150,7 @@ func main() {
 		filter := nostr.Filter{
 			//	Kinds: []int{nostr.KindTextNote},
 			Kinds: []int{nostr.KindReaction, nostr.KindRepost},
-			IDs:   []string{item.ID},
+			Tags:  nostr.TagMap{"e": []string{item.ID}},
 		}
 		evs, err := ms.QuerySync(context.Background(), filter)
 		if err != nil || len(evs) != 1 {

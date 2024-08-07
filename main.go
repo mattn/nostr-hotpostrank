@@ -22,8 +22,8 @@ const version = "0.0.4"
 var revision = "HEAD"
 
 type HotItem struct {
-	ID            string
-	Event         *nostr.Event
+	ID string
+	//Event         *nostr.Event
 	ReactionCount int
 	RepostCount   int
 }
@@ -39,7 +39,7 @@ func postRanks(ctx context.Context, ms nostr.MultiStore, nsec string, items []*H
 	var buf bytes.Buffer
 	fmt.Fprintln(&buf, "最近のホットな話題をお知らせします。 #hotpostrank")
 	for i, item := range items {
-		note, _ := nip19.EncodeNote(item.Event.ID)
+		note, _ := nip19.EncodeNote(item.ID)
 		fmt.Fprintf(&buf, "No%d:", i+1)
 		if item.RepostCount > 0 {
 			fmt.Fprintf(&buf, " %d reposts", item.RepostCount)
@@ -115,8 +115,7 @@ func main() {
 
 	m := map[string]*HotItem{}
 	for _, ev := range evs {
-		es := ev.Tags.GetAll([]string{"e"})
-		for _, e := range es {
+		for _, e := range ev.Tags {
 			if e.Key() != "e" {
 				continue
 			}
@@ -149,14 +148,25 @@ func main() {
 	n := 0
 	for _, item := range items {
 		filter := nostr.Filter{
-			Kinds: []int{nostr.KindTextNote},
+			//	Kinds: []int{nostr.KindTextNote},
+			Kinds: []int{nostr.KindReaction, nostr.KindRepost},
 			IDs:   []string{item.ID},
 		}
 		evs, err := ms.QuerySync(context.Background(), filter)
 		if err != nil || len(evs) != 1 {
 			continue
 		}
-		items[n].Event = evs[0]
+		item.RepostCount = 0
+		item.ReactionCount = 0
+		for _, eev := range evs {
+			switch eev.Kind {
+			case nostr.KindRepost:
+				item.RepostCount++
+			case nostr.KindReaction:
+				item.ReactionCount++
+			}
+		}
+		//items[n].Event = evs[0]
 		if n++; n >= 10 {
 			break
 		}

@@ -22,10 +22,9 @@ const version = "0.0.6"
 var revision = "HEAD"
 
 type HotItem struct {
-	ID string
-	//Event         *nostr.Event
-	ReactionCount int
-	RepostCount   int
+	ID        string
+	Reactions map[string]struct{}
+	Reposts   map[string]struct{}
 }
 
 var (
@@ -41,11 +40,11 @@ func postRanks(ctx context.Context, ms nostr.MultiStore, nsec string, items []*H
 	for i, item := range items {
 		note, _ := nip19.EncodeNote(item.ID)
 		fmt.Fprintf(&buf, "No%d:", i+1)
-		if item.RepostCount > 0 {
-			fmt.Fprintf(&buf, " %d reposts", item.RepostCount)
+		if len(item.Reposts) > 0 {
+			fmt.Fprintf(&buf, " %d reposts", len(item.Reposts))
 		}
-		if item.ReactionCount > 0 {
-			fmt.Fprintf(&buf, " %d reactions", item.ReactionCount)
+		if len(item.Reactions) > 0 {
+			fmt.Fprintf(&buf, " %d reactions", len(item.Reactions))
 		}
 		fmt.Fprintf(&buf, "\n  nostr:%s\n", note)
 	}
@@ -80,6 +79,11 @@ func postRanks(ctx context.Context, ms nostr.MultiStore, nsec string, items []*H
 	return ms.Publish(ctx, eev)
 }
 
+func findEvents(ms nostr.MultiStore, filter nostr.Filter) []*nostr.Event {
+	evs, _ := ms.QuerySync(context.Background(), filter)
+	return evs
+}
+
 func main() {
 	var ver bool
 	flag.BoolVar(&ver, "version", false, "show version")
@@ -104,35 +108,49 @@ func main() {
 	}
 	timestamp := nostr.Timestamp(time.Now().Add(-3 * time.Hour).Unix())
 	filter := nostr.Filter{
-		Kinds: []int{nostr.KindReaction, nostr.KindRepost},
+		Kinds: []int{nostr.KindTextNote},
 		Since: &timestamp,
 	}
 
-	evs, err := ms.QuerySync(context.Background(), filter)
+	notes, err := ms.QuerySync(context.Background(), filter)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	m := map[string]*HotItem{}
-	for _, ev := range evs {
-		for _, e := range ev.Tags {
+	for _, note := range notes {
+		m[note.ID] = &HotItem{
+			ID:        note.ID,
+			Reposts:   map[string]struct{}{},
+			Reactions: map[string]struct{}{},
+		}
+	}
+
+	filter = nostr.Filter{
+		Kinds: []int{nostr.KindReaction, nostr.KindRepost},
+		Since: &timestamp,
+	}
+
+	points, err := ms.QuerySync(context.Background(), filter)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, point := range points {
+		for _, e := range point.Tags {
 			if e.Key() != "e" {
 				continue
 			}
 			hi, ok := m[e.Value()]
 			if !ok {
-				hi = &HotItem{
-					ID:          e.Value(),
-					RepostCount: 0,
-				}
-				m[e.Value()] = hi
+				continue
 			}
 
-			switch ev.Kind {
+			switch point.Kind {
 			case nostr.KindRepost:
-				hi.RepostCount++
+				hi.Reposts[point.PubKey] = struct{}{}
 			case nostr.KindReaction:
-				hi.ReactionCount++
+				hi.Reactions[point.PubKey] = struct{}{}
 			}
 		}
 	}
@@ -142,36 +160,12 @@ func main() {
 		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool {
-		return items[i].RepostCount+items[i].ReactionCount > items[j].RepostCount+items[j].ReactionCount
+		return len(items[i].Reposts)+len(items[i].Reactions) > len(items[j].Reposts)+len(items[j].Reactions)
 	})
 
-	n := 0
-	for _, item := range items {
-		filter := nostr.Filter{
-			//	Kinds: []int{nostr.KindTextNote},
-			Kinds: []int{nostr.KindReaction, nostr.KindRepost},
-			Tags:  nostr.TagMap{"e": []string{item.ID}},
-		}
-		evs, err := ms.QuerySync(context.Background(), filter)
-		if err != nil || len(evs) != 1 {
-			continue
-		}
-		item.RepostCount = 0
-		item.ReactionCount = 0
-		for _, eev := range evs {
-			switch eev.Kind {
-			case nostr.KindRepost:
-				item.RepostCount++
-			case nostr.KindReaction:
-				item.ReactionCount++
-			}
-		}
-		//items[n].Event = evs[0]
-		if n++; n >= 10 {
-			break
-		}
+	if len(items) > 10 {
+		items = items[:10]
 	}
-	items = items[:n]
 
 	ctx = context.TODO()
 	postRanks(ctx, ms, os.Getenv("BOT_NSEC"), items)

@@ -167,6 +167,10 @@ func main() {
 		items = items[:10]
 	}
 
+	if len(items) == 0 {
+		return
+	}
+
 	ctx = context.TODO()
 	postRanks(ctx, ms, os.Getenv("BOT_NSEC"), items)
 }

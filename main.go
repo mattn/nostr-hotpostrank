@@ -1,14 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/nbd-wtf/go-nostr"
@@ -27,12 +30,46 @@ type HotItem struct {
 	Reposts   map[string]struct{}
 }
 
+const botListURL = "https://raw.githubusercontent.com/nostr-jp/botlist/main/botlist.txt"
+
 var (
 	relays = []string{
 		"wss://yabu.me",
 	}
 	tt bool
 )
+
+func fetchBots(ctx context.Context) (map[string]struct{}, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, botListURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get botlist: %v", resp.Status)
+	}
+
+	bots := map[string]struct{}{}
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		npub := strings.TrimSpace(scanner.Text())
+		if npub == "" {
+			continue
+		}
+		_, pub, err := nip19.Decode(npub)
+		if err != nil {
+			continue
+		}
+		if pub, ok := pub.(string); ok {
+			bots[pub] = struct{}{}
+		}
+	}
+	return bots, scanner.Err()
+}
 
 func postRanks(ctx context.Context, ms nostr.MultiStore, nsec string, items []*HotItem) error {
 	var buf bytes.Buffer
@@ -117,8 +154,16 @@ func main() {
 		log.Fatal(err)
 	}
 
+	bots, err := fetchBots(ctx)
+	if err != nil {
+		log.Println(err)
+	}
+
 	m := map[string]*HotItem{}
 	for _, note := range notes {
+		if _, ok := bots[note.PubKey]; ok {
+			continue
+		}
 		m[note.ID] = &HotItem{
 			ID:        note.ID,
 			Reposts:   map[string]struct{}{},

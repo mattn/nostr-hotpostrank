@@ -1,5 +1,5 @@
 BIN := nostr-hotpostrank
-VERSION := $$(make -s show-version)
+VERSION := $$(make -s --no-print-directory show-version)
 CURRENT_REVISION := $(shell git rev-parse --short HEAD)
 BUILD_LDFLAGS := "-s -w -X main.revision=$(CURRENT_REVISION)"
 GOBIN ?= $(shell go env GOPATH)/bin

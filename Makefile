@@ -4,6 +4,7 @@ CURRENT_REVISION := $(shell git rev-parse --short HEAD)
 BUILD_LDFLAGS := "-s -w -X main.revision=$(CURRENT_REVISION)"
 GOBIN ?= $(shell go env GOPATH)/bin
 export GO111MODULE=on
+BUMP ?= up
 
 .PHONY: all
 all: clean build
@@ -47,11 +48,16 @@ endif
 ifneq ($(shell git rev-parse --abbrev-ref HEAD),main)
 	$(error current branch is not main)
 endif
-	@gobump up -w .
+	@gobump $(BUMP) -w .
 	git commit -am "bump up version to $(VERSION)"
 	git tag "v$(VERSION)"
 	git push origin main
 	git push origin "refs/tags/v$(VERSION)"
+
+# tty が無くても使えるよう、対話せずに patch を上げる
+.PHONY: bump-force
+bump-force:
+	@$(MAKE) bump BUMP=patch
 
 .PHONY: upload
 upload: $(GOBIN)/ghr

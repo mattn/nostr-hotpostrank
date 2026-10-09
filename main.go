@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
@@ -26,6 +27,7 @@ var revision = "HEAD"
 
 type HotItem struct {
 	ID        string
+	PubKey    string
 	Reactions map[string]struct{}
 	Reposts   map[string]struct{}
 }
@@ -69,6 +71,30 @@ func fetchBots(ctx context.Context) (map[string]struct{}, error) {
 		}
 	}
 	return bots, scanner.Err()
+}
+
+func hasKana(s string) bool {
+	for _, r := range s {
+		if unicode.In(r, unicode.Hiragana, unicode.Katakana) {
+			return true
+		}
+	}
+	return false
+}
+
+// isJapaneseUser は直近の投稿に仮名を含むものがあれば日本語ユーザーとみなす
+func isJapaneseUser(ms nostr.MultiStore, pubkey string) bool {
+	evs := findEvents(ms, nostr.Filter{
+		Kinds:   []int{nostr.KindTextNote},
+		Authors: []string{pubkey},
+		Limit:   50,
+	})
+	for _, ev := range evs {
+		if hasKana(ev.Content) {
+			return true
+		}
+	}
+	return false
 }
 
 func postRanks(ctx context.Context, ms nostr.MultiStore, nsec string, items []*HotItem) error {
@@ -159,6 +185,14 @@ func main() {
 		log.Println(err)
 	}
 
+	// 期間内に仮名を含む投稿をしたユーザーは日本語ユーザーとみなす
+	jpUsers := map[string]bool{}
+	for _, note := range notes {
+		if hasKana(note.Content) {
+			jpUsers[note.PubKey] = true
+		}
+	}
+
 	m := map[string]*HotItem{}
 	for _, note := range notes {
 		if _, ok := bots[note.PubKey]; ok {
@@ -166,6 +200,7 @@ func main() {
 		}
 		m[note.ID] = &HotItem{
 			ID:        note.ID,
+			PubKey:    note.PubKey,
 			Reposts:   map[string]struct{}{},
 			Reactions: map[string]struct{}{},
 		}
@@ -208,9 +243,23 @@ func main() {
 		return len(items[i].Reposts)+len(items[i].Reactions) > len(items[j].Reposts)+len(items[j].Reactions)
 	})
 
-	if len(items) > 10 {
-		items = items[:10]
+	// 画像 URL だけの投稿などもあるため、期間内に仮名を含む投稿が無い
+	// ユーザーは上位候補に限って過去の投稿を遡って判定する
+	ranked := []*HotItem{}
+	for _, item := range items {
+		if len(item.Reposts)+len(item.Reactions) == 0 || len(ranked) >= 10 {
+			break
+		}
+		jp, ok := jpUsers[item.PubKey]
+		if !ok {
+			jp = isJapaneseUser(ms, item.PubKey)
+			jpUsers[item.PubKey] = jp
+		}
+		if jp {
+			ranked = append(ranked, item)
+		}
 	}
+	items = ranked
 
 	if len(items) == 0 {
 		return
